@@ -38,6 +38,15 @@
                     </svg>
                     <span class="blacklink">Help</span></a>
                 </td>
+                <td>
+                    <a class="btnimg" onclick="showProbing()">
+                    <svg width='1em' height='1em' viewBox='0 0 1300 1200'>
+                    <g transform='translate(50,1200) scale(1, -1)'>
+                    <path d='M600 1150q124 0 211.5 -87.5t87.5 -212.5q0 -78 -37 -147l-267 -267q-69 -69 -147 -69q-125 0 -212.5 87.5t-87.5 212.5t87.5 212.5t212.5 87.5q78 0 147 -37l267 267q34 34 83 34t83 -34t34 -83t-34 -83l-267 -267q37 -69 37 -147zM400 750q-62 0 -106 -44t-44 -106t44 -106t106 -44t106 44t44 106t-44 106t-106 44z'></path>
+                    </g>
+                    </svg>
+                    <span class="blacklink">Probing</span></a>
+                </td>
                 <td style="width:100%;"></td>
                 <td onclick='RL();' id="loginicon">
                     <a class="btnimg">
@@ -98,6 +107,126 @@
                 </div>
             </div>
         </div>
+        <div class="panel hide_it" id="PROBING">
+            <div class="panel-heading">Probing Functions</div>
+            <div class="panel-body">
+                <div class="form-group">
+                    <label>Probe Settings:</label>
+                    <table>
+                        <tr>
+                            <td>Feed Rate (mm/min):</td>
+                            <td><input type="number" id="probeFeedRate" class="form-control" value="100" min="1" max="1000" style="width: 100px;"/></td>
+                        </tr>
+                        <tr>
+                            <td>Probe Distance (mm):</td>
+                            <td><input type="number" id="probeDistance" class="form-control" value="10" min="0.1" max="100" step="0.1" style="width: 100px;"/></td>
+                        </tr>
+                        <tr>
+                            <td>Backoff Distance (mm):</td>
+                            <td><input type="number" id="backoffDistance" class="form-control" value="1" min="0.1" max="10" step="0.1" style="width: 100px;"/></td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div class="panel">
+                    <div class="panel-heading">Edge Probing</div>
+                    <div class="panel-body">
+                        <table>
+                            <tr>
+                                <td colspan="3" style="text-align: center;"><strong>External Edge Probing</strong></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td><button class="btn btn-primary" onclick="probeEdge('Y+')">+Y Edge</button></td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="probeEdge('X-')">-X Edge</button></td>
+                                <td style="text-align: center;">Workpiece</td>
+                                <td><button class="btn btn-primary" onclick="probeEdge('X+')">+X Edge</button></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td><button class="btn btn-primary" onclick="probeEdge('Y-')">-Y Edge</button></td>
+                                <td></td>
+                            </tr>
+                        </table>
+                        <br>
+                        <table>
+                            <tr>
+                                <td colspan="3" style="text-align: center;"><strong>Internal Edge Probing</strong></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td><button class="btn btn-primary" onclick="probeInternalEdge('Y+')">+Y Internal</button></td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="probeInternalEdge('X-')">-X Internal</button></td>
+                                <td style="text-align: center;">Hole/Pocket</td>
+                                <td><button class="btn btn-primary" onclick="probeInternalEdge('X+')">+X Internal</button></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td><button class="btn btn-primary" onclick="probeInternalEdge('Y-')">-Y Internal</button></td>
+                                <td></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-heading">Corner Probing</div>
+                    <div class="panel-body">
+                        <table>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="probeCorner('XY+')">+X+Y Corner</button></td>
+                                <td><button class="btn btn-primary" onclick="probeCorner('X-Y+')">-X+Y Corner</button></td>
+                            </tr>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="probeCorner('XY-')">+X-Y Corner</button></td>
+                                <td><button class="btn btn-primary" onclick="probeCorner('X-Y-')">-X-Y Corner</button></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-heading">Center Probing</div>
+                    <div class="panel-body">
+                        <table>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="probeCenterExternal()">External Center (Boss)</button></td>
+                                <td><button class="btn btn-primary" onclick="probeCenterInternal()">Internal Center (Hole)</button></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-heading">Advanced Probing</div>
+                    <div class="panel-body">
+                        <table>
+                            <tr>
+                                <td><button class="btn btn-primary" onclick="measureRotation()">Measure Rotation</button></td>
+                                <td><button class="btn btn-primary" onclick="showHeightMapDialog()">Height Map</button></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-heading">Probe Results</div>
+                    <div class="panel-body">
+                        <div id="probeResults" style="font-family: monospace; background-color: #f5f5f5; padding: 10px; border: 1px solid #ddd; min-height: 100px; overflow-y: auto;">
+                            Probe results will appear here...
+                        </div>
+                        <br>
+                        <button class="btn btn-primary" onclick="clearProbeResults()">Clear Results</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="panel hide_it" id="FWUPDATE">
             <div class="panel-heading">Firmware Update</div>
             <div class="panel-body">
@@ -131,6 +260,46 @@
                           <div class="modal-footer">
                             <input  type="button" class="btn btn-primary" onclick="SLR()" value="Submit"/>
                          </div>
+                    </div>
+                </div>
+                
+                <div id="heightMapDialog" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Height Map Configuration</h3>
+                        </div>
+                        <div class="modal-body">
+                            <table>
+                                <tr>
+                                    <td>Grid Size X:</td>
+                                    <td><input type="number" id="heightMapGridX" class="form-control" value="5" min="2" max="20" style="width:80px;"/></td>
+                                </tr>
+                                <tr>
+                                    <td>Grid Size Y:</td>
+                                    <td><input type="number" id="heightMapGridY" class="form-control" value="5" min="2" max="20" style="width:80px;"/></td>
+                                </tr>
+                                <tr>
+                                    <td>X Min (mm):</td>
+                                    <td><input type="number" id="heightMapXMin" class="form-control" value="0" step="0.1" style="width:80px;"/></td>
+                                </tr>
+                                <tr>
+                                    <td>X Max (mm):</td>
+                                    <td><input type="number" id="heightMapXMax" class="form-control" value="10" step="0.1" style="width:80px;"/></td>
+                                </tr>
+                                <tr>
+                                    <td>Y Min (mm):</td>
+                                    <td><input type="number" id="heightMapYMin" class="form-control" value="0" step="0.1" style="width:80px;"/></td>
+                                </tr>
+                                <tr>
+                                    <td>Y Max (mm):</td>
+                                    <td><input type="number" id="heightMapYMax" class="form-control" value="10" step="0.1" style="width:80px;"/></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="modal-footer">
+                            <input type="button" class="btn btn-primary" onclick="startHeightMap()" value="Start"/>
+                            <input type="button" class="btn btn-primary" onclick="closeHeightMapDialog()" value="Cancel"/>
+                        </div>
                     </div>
                 </div>
         <!-- smoosh -->

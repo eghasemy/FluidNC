@@ -250,6 +250,7 @@ function FWOk(){
     document.getElementById('MSG').innerHTML = "Connected";
     document.getElementById('FILESYSTEM').style.display = "block";
     document.getElementById('FWUPDATE').style.display = "block";
+    document.getElementById('PROBING').style.display = "block";
 }
 
 function InitUI(){
@@ -500,6 +501,339 @@ function SLR (){
             }
         }
     };
-xmlhttp.open("GET", url, true);
-xmlhttp.send();
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send();
+}
+
+// Probing Functions
+var probeResults = [];
+
+function showProbing() {
+    document.getElementById('FILESYSTEM').style.display = "none";
+    document.getElementById('FWUPDATE').style.display = "none";
+    document.getElementById('PROBING').style.display = "block";
+}
+
+function sendGCode(command) {
+    var xmlhttp = new XMLHttpRequest();
+    var url = "/command?commandText=" + encodeURIComponent(command);
+    
+    xmlhttp.onreadystatechange = function() {
+        if (xmlhttp.readyState == 4) {
+            if (xmlhttp.status == 200) {
+                // Command sent successfully
+                console.log("G-code sent: " + command);
+            } else {
+                console.error("Error sending G-code: " + xmlhttp.status);
+                addProbeResult("Error sending command: " + command);
+            }
+        }
+    };
+    
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send();
+}
+
+function addProbeResult(message) {
+    var timestamp = new Date().toLocaleTimeString();
+    var resultDiv = document.getElementById('probeResults');
+    resultDiv.innerHTML += timestamp + ": " + message + "\n";
+    resultDiv.scrollTop = resultDiv.scrollHeight;
+}
+
+function clearProbeResults() {
+    document.getElementById('probeResults').innerHTML = "Probe results will appear here...\n";
+}
+
+function probeEdge(direction) {
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    var backoff = document.getElementById('backoffDistance').value;
+    
+    addProbeResult("Starting external edge probe in " + direction + " direction");
+    
+    // Set feed rate for probing
+    sendGCode("F" + feedRate);
+    
+    var probeCommand;
+    var backoffCommand;
+    
+    switch(direction) {
+        case 'X+':
+            probeCommand = "G38.2 X" + distance;
+            backoffCommand = "G0 X-" + backoff;
+            break;
+        case 'X-':
+            probeCommand = "G38.2 X-" + distance;
+            backoffCommand = "G0 X" + backoff;
+            break;
+        case 'Y+':
+            probeCommand = "G38.2 Y" + distance;
+            backoffCommand = "G0 Y-" + backoff;
+            break;
+        case 'Y-':
+            probeCommand = "G38.2 Y-" + distance;
+            backoffCommand = "G0 Y" + backoff;
+            break;
+    }
+    
+    // Send probe command
+    sendGCode(probeCommand);
+    
+    // After probing, back off slightly
+    setTimeout(function() {
+        sendGCode(backoffCommand);
+        addProbeResult("Edge probe complete, backed off " + backoff + "mm");
+    }, 1000);
+}
+
+function probeInternalEdge(direction) {
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    var backoff = document.getElementById('backoffDistance').value;
+    
+    addProbeResult("Starting internal edge probe in " + direction + " direction");
+    
+    // Set feed rate for probing
+    sendGCode("F" + feedRate);
+    
+    var probeCommand;
+    var backoffCommand;
+    
+    switch(direction) {
+        case 'X+':
+            probeCommand = "G38.2 X" + distance;
+            backoffCommand = "G0 X-" + backoff;
+            break;
+        case 'X-':
+            probeCommand = "G38.2 X-" + distance;
+            backoffCommand = "G0 X" + backoff;
+            break;
+        case 'Y+':
+            probeCommand = "G38.2 Y" + distance;
+            backoffCommand = "G0 Y-" + backoff;
+            break;
+        case 'Y-':
+            probeCommand = "G38.2 Y-" + distance;
+            backoffCommand = "G0 Y" + backoff;
+            break;
+    }
+    
+    // Send probe command
+    sendGCode(probeCommand);
+    
+    // After probing, back off slightly
+    setTimeout(function() {
+        sendGCode(backoffCommand);
+        addProbeResult("Internal edge probe complete, backed off " + backoff + "mm");
+    }, 1000);
+}
+
+function probeCorner(corner) {
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    var backoff = document.getElementById('backoffDistance').value;
+    
+    addProbeResult("Starting corner probe: " + corner);
+    
+    // Set feed rate for probing
+    sendGCode("F" + feedRate);
+    
+    var xDirection, yDirection;
+    
+    switch(corner) {
+        case 'XY+':  // +X+Y corner
+            xDirection = '+';
+            yDirection = '+';
+            break;
+        case 'X-Y+': // -X+Y corner
+            xDirection = '-';
+            yDirection = '+';
+            break;
+        case 'XY-':  // +X-Y corner
+            xDirection = '+';
+            yDirection = '-';
+            break;
+        case 'X-Y-': // -X-Y corner
+            xDirection = '-';
+            yDirection = '-';
+            break;
+    }
+    
+    // Probe in X direction first
+    var xProbeCmd = "G38.2 X" + (xDirection === '+' ? distance : '-' + distance);
+    var xBackoffCmd = "G0 X" + (xDirection === '+' ? '-' + backoff : backoff);
+    
+    sendGCode(xProbeCmd);
+    
+    // Wait and then probe in Y direction
+    setTimeout(function() {
+        sendGCode(xBackoffCmd);
+        
+        setTimeout(function() {
+            var yProbeCmd = "G38.2 Y" + (yDirection === '+' ? distance : '-' + distance);
+            var yBackoffCmd = "G0 Y" + (yDirection === '+' ? '-' + backoff : backoff);
+            
+            sendGCode(yProbeCmd);
+            
+            setTimeout(function() {
+                sendGCode(yBackoffCmd);
+                addProbeResult("Corner probe complete");
+            }, 1000);
+        }, 500);
+    }, 1000);
+}
+
+function probeCenterExternal() {
+    addProbeResult("Starting external center probe (boss measurement)");
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    
+    sendGCode("F" + feedRate);
+    
+    // Probe in all 4 directions to find center of external feature
+    var probeSequence = [
+        "G38.2 X" + distance,     // Probe +X
+        "G0 X-1",                 // Back off
+        "G38.2 X-" + distance,    // Probe -X  
+        "G0 X1",                  // Back off
+        "G38.2 Y" + distance,     // Probe +Y
+        "G0 Y-1",                 // Back off
+        "G38.2 Y-" + distance,    // Probe -Y
+        "G0 Y1"                   // Back off
+    ];
+    
+    var index = 0;
+    function sendNext() {
+        if (index < probeSequence.length) {
+            sendGCode(probeSequence[index]);
+            index++;
+            setTimeout(sendNext, 1200);
+        } else {
+            addProbeResult("External center probe complete");
+        }
+    }
+    
+    sendNext();
+}
+
+function probeCenterInternal() {
+    addProbeResult("Starting internal center probe (hole measurement)");
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    
+    sendGCode("F" + feedRate);
+    
+    // Probe in all 4 directions to find center of internal feature (hole)
+    var probeSequence = [
+        "G38.2 X" + distance,     // Probe +X
+        "G0 X-1",                 // Back off
+        "G38.2 X-" + distance,    // Probe -X
+        "G0 X1",                  // Back off
+        "G38.2 Y" + distance,     // Probe +Y
+        "G0 Y-1",                 // Back off
+        "G38.2 Y-" + distance,    // Probe -Y
+        "G0 Y1"                   // Back off
+    ];
+    
+    var index = 0;
+    function sendNext() {
+        if (index < probeSequence.length) {
+            sendGCode(probeSequence[index]);
+            index++;
+            setTimeout(sendNext, 1200);
+        } else {
+            addProbeResult("Internal center probe complete");
+        }
+    }
+    
+    sendNext();
+}
+
+function measureRotation() {
+    addProbeResult("Starting rotation measurement");
+    var feedRate = document.getElementById('probeFeedRate').value;
+    var distance = document.getElementById('probeDistance').value;
+    
+    sendGCode("F" + feedRate);
+    
+    // Probe two points on an edge to measure rotation
+    addProbeResult("Probe first point on edge");
+    sendGCode("G38.2 Y" + distance);
+    
+    setTimeout(function() {
+        sendGCode("G0 Y-1"); // Back off
+        
+        setTimeout(function() {
+            sendGCode("G0 X10"); // Move 10mm in X
+            addProbeResult("Probe second point on edge");
+            sendGCode("G38.2 Y" + distance);
+            
+            setTimeout(function() {
+                sendGCode("G0 Y-1"); // Back off
+                addProbeResult("Rotation measurement complete - check probe coordinates to calculate angle");
+            }, 1000);
+        }, 500);
+    }, 1000);
+}
+
+function showHeightMapDialog() {
+    document.getElementById('heightMapDialog').style.display = 'block';
+}
+
+function closeHeightMapDialog() {
+    document.getElementById('heightMapDialog').style.display = 'none';
+}
+
+function startHeightMap() {
+    var gridX = parseInt(document.getElementById('heightMapGridX').value);
+    var gridY = parseInt(document.getElementById('heightMapGridY').value);
+    var xMin = parseFloat(document.getElementById('heightMapXMin').value);
+    var xMax = parseFloat(document.getElementById('heightMapXMax').value);
+    var yMin = parseFloat(document.getElementById('heightMapYMin').value);
+    var yMax = parseFloat(document.getElementById('heightMapYMax').value);
+    var feedRate = document.getElementById('probeFeedRate').value;
+    
+    closeHeightMapDialog();
+    
+    addProbeResult("Starting height map: " + gridX + "x" + gridY + " grid");
+    addProbeResult("Area: X(" + xMin + " to " + xMax + ") Y(" + yMin + " to " + yMax + ")");
+    
+    sendGCode("F" + feedRate);
+    
+    var xStep = (xMax - xMin) / (gridX - 1);
+    var yStep = (yMax - yMin) / (gridY - 1);
+    
+    var currentPoint = 0;
+    var totalPoints = gridX * gridY;
+    
+    function probeNextPoint() {
+        if (currentPoint >= totalPoints) {
+            addProbeResult("Height map complete!");
+            return;
+        }
+        
+        var ix = currentPoint % gridX;
+        var iy = Math.floor(currentPoint / gridX);
+        
+        var x = xMin + ix * xStep;
+        var y = yMin + iy * yStep;
+        
+        // Move to position
+        sendGCode("G0 X" + x.toFixed(3) + " Y" + y.toFixed(3));
+        
+        // Wait and then probe
+        setTimeout(function() {
+            sendGCode("G38.2 Z-10"); // Probe down
+            addProbeResult("Probing point " + (currentPoint + 1) + "/" + totalPoints + " at X" + x.toFixed(3) + " Y" + y.toFixed(3));
+            
+            setTimeout(function() {
+                sendGCode("G0 Z2"); // Retract
+                currentPoint++;
+                setTimeout(probeNextPoint, 800);
+            }, 1000);
+        }, 500);
+    }
+    
+    probeNextPoint();
 }
