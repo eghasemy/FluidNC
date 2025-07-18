@@ -24,6 +24,13 @@
 #include <string.h>  // memset
 #include <math.h>    // sqrt etc.
 
+// M_PI is not defined in standard C/C++ but some compilers
+// support it anyway.  The following suppresses Intellisense
+// problem reports.
+#ifndef M_PI
+#    define M_PI 3.14159265358979323846
+#endif
+
 // Apply coordinate rotation transformation if G68 is active
 static void apply_coordinate_rotation(float* coords) {
     if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && gc_state.rotation_angle != 0.0f) {
