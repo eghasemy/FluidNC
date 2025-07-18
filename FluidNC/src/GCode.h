@@ -40,14 +40,15 @@ enum class ModalGroup : uint8_t {
     MG8  = 8,   // [G43.1,G49] Tool length offset
     MG12 = 9,   // [G54,G55,G56,G57,G58,G59] Coordinate system selection
     MG13 = 10,  // [G61] Control mode
+    MG14 = 11,  // [G68,G69] Coordinate rotation
     // Table 6. M-code Modal Groups
-    MM4  = 11,  // [M0,M1,M2,M30] Stopping
-    MM5  = 12,  // [M62,M63,M64,M65,M66,M67,M68] Digital/analog output/input
-    MM6  = 13,  // [M6] [M61] Tool change
-    MM7  = 14,  // [M3,M4,M5] Spindle turning
-    MM8  = 15,  // [M7,M8,M9] Coolant control
-    MM9  = 16,  // [M56] Override control
-    MM10 = 17,  // [M100-M199] User Defined
+    MM4  = 12,  // [M0,M1,M2,M30] Stopping
+    MM5  = 13,  // [M62,M63,M64,M65,M66,M67,M68] Digital/analog output/input
+    MM6  = 14,  // [M6] [M61] Tool change
+    MM7  = 15,  // [M3,M4,M5] Spindle turning
+    MM8  = 16,  // [M7,M8,M9] Coolant control
+    MM9  = 17,  // [M56] Override control
+    MM10 = 18,  // [M100-M199] User Defined
 };
 
 // Command actions for within execution-type modal groups (motion, stopping, non-modal). Used
@@ -134,6 +135,12 @@ enum class CutterCompensation : gcodenum_t {
 // Modal Group G13: Control mode
 enum class ControlMode : gcodenum_t {
     ExactPath = 610,  // G61
+};
+
+// Modal Group G14: Coordinate rotation
+enum class CoordinateRotation : gcodenum_t {
+    Disabled = 690,  // G69 Default
+    Enabled  = 680,  // G68
 };
 
 // GCodeCoolant is used by the parser, where at most one of
@@ -275,9 +282,10 @@ struct gc_modal_t {
     CoolantState  coolant;       // {M7,M8,M9}
     SpindleState  spindle;       // {M3,M4,M5}
     ToolChange    tool_change;   // {M6}
-    SetToolNumber set_tool_number;
-    IoControl     io_control;  // {M62, M63, M67}
-    Override      override;    // {M56}
+    SetToolNumber        set_tool_number;
+    IoControl            io_control;    // {M62, M63, M67}
+    Override             override;      // {M56}
+    CoordinateRotation   coord_rotation; // {G68,G69}
 };
 
 struct gc_values_t {
@@ -312,6 +320,10 @@ struct parser_state_t {
     // machine zero in mm. Non-persistent. Cleared upon reset and boot.
     float tool_length_offset;  // Tracks tool length offset value when enabled.
     bool  skip_blocks;         // Skipping due to flow control
+    
+    // Coordinate rotation state (G68/G69)
+    float rotation_angle;      // Rotation angle in degrees
+    float rotation_center[2];  // X,Y center of rotation
 };
 
 extern parser_state_t gc_state;
