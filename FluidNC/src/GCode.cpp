@@ -24,6 +24,48 @@
 #include <string.h>  // memset
 #include <math.h>    // sqrt etc.
 
+// M_PI is not defined in standard C/C++ but some compilers
+// support it anyway.  The following suppresses Intellisense
+// problem reports.
+#ifndef M_PI
+#    define M_PI 3.14159265358979323846
+#endif
+
+// Apply coordinate rotation transformation if G68 is active
+static void apply_coordinate_rotation(float* coords) {
+    if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && gc_state.rotation_angle != 0.0f) {
+        // Convert angle from degrees to radians
+        float angle_rad = gc_state.rotation_angle * M_PI / 180.0f;
+        float cos_angle = cosf(angle_rad);
+        float sin_angle = sinf(angle_rad);
+        
+        // Translate to rotation center
+        float x = coords[X_AXIS] - gc_state.rotation_center[X_AXIS];
+        float y = coords[Y_AXIS] - gc_state.rotation_center[Y_AXIS];
+        
+        // Apply rotation
+        coords[X_AXIS] = x * cos_angle - y * sin_angle + gc_state.rotation_center[X_AXIS];
+        coords[Y_AXIS] = x * sin_angle + y * cos_angle + gc_state.rotation_center[Y_AXIS];
+    }
+}
+
+// Apply coordinate rotation to arc offset (IJK) values
+static void apply_coordinate_rotation_to_offset(float* offset) {
+    if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && gc_state.rotation_angle != 0.0f) {
+        // Convert angle from degrees to radians
+        float angle_rad = gc_state.rotation_angle * M_PI / 180.0f;
+        float cos_angle = cosf(angle_rad);
+        float sin_angle = sinf(angle_rad);
+        
+        // Rotate the I,J offsets (no translation needed for offsets)
+        float i = offset[X_AXIS];  // I offset
+        float j = offset[Y_AXIS];  // J offset
+        
+        offset[X_AXIS] = i * cos_angle - j * sin_angle;  // Rotated I
+        offset[Y_AXIS] = i * sin_angle + j * cos_angle;  // Rotated J
+    }
+}
+
 // Allow iteration over CoordIndex values
 CoordIndex& operator++(CoordIndex& i) {
     i = static_cast<CoordIndex>(static_cast<size_t>(i) + 1);
@@ -56,7 +98,8 @@ gc_modal_t modal_defaults = {
     ToolChange::Disable,
     SetToolNumber::Disable,
     IoControl::None,
-    Override::ParkingMotion
+    Override::ParkingMotion,
+    CoordinateRotation::Disabled
 };
 // clang-format on
 
@@ -585,6 +628,14 @@ Error gc_execute_line(const char* input_line) {
                         }
                         // gc_block.modal.control = ControlMode::ExactPath; // G61
                         mg_word_bit = ModalGroup::MG13;
+                        break;
+                    case 68:
+                        gc_block.modal.coord_rotation = CoordinateRotation::Enabled;
+                        mg_word_bit = ModalGroup::MG14;
+                        break;
+                    case 69:
+                        gc_block.modal.coord_rotation = CoordinateRotation::Disabled;
+                        mg_word_bit = ModalGroup::MG14;
                         break;
                     default:
                         return Error::GcodeUnsupportedCommand;  // [Unsupported G command]
@@ -1125,6 +1176,31 @@ Error gc_execute_line(const char* input_line) {
         }
         if (gc_state.modal.coord_select != gc_block.modal.coord_select) {
             coords[gc_block.modal.coord_select]->get(block_coord_system);
+        }
+    }
+    
+    // [15.1. Handle coordinate rotation ]: Process G68/G69 parameters
+    if (bitnum_is_true(command_words, ModalGroup::MG14)) {  // Check if G68/G69 called in block
+        if (gc_block.modal.coord_rotation == CoordinateRotation::Enabled) {
+            // G68: Extract rotation angle from R parameter
+            if (bitnum_is_true(value_words, GCodeWord::R)) {
+                gc_state.rotation_angle = gc_block.values.r;
+                clear_bits(value_words, bitnum_to_mask(GCodeWord::R));
+            }
+            // Extract optional rotation center from X,Y parameters
+            if (bitnum_is_true(value_words, GCodeWord::X)) {
+                gc_state.rotation_center[X_AXIS] = gc_block.values.xyz[X_AXIS];
+                clear_bits(value_words, bitnum_to_mask(GCodeWord::X));
+            }
+            if (bitnum_is_true(value_words, GCodeWord::Y)) {
+                gc_state.rotation_center[Y_AXIS] = gc_block.values.xyz[Y_AXIS];
+                clear_bits(value_words, bitnum_to_mask(GCodeWord::Y));
+            }
+        } else {
+            // G69: Reset rotation to disabled state
+            gc_state.rotation_angle = 0.0f;
+            gc_state.rotation_center[X_AXIS] = 0.0f;
+            gc_state.rotation_center[Y_AXIS] = 0.0f;
         }
     }
     // [16. Set path control mode ]: N/A. Only G61. G61.1 and G64 NOT SUPPORTED.
@@ -1791,6 +1867,8 @@ Error gc_execute_line(const char* input_line) {
     // gc_state.modal.control = gc_block.modal.control; // NOTE: Always default.
     // [17. Set distance mode ]:
     gc_state.modal.distance = gc_block.modal.distance;
+    // [17.1. Set coordinate rotation mode ]:
+    gc_state.modal.coord_rotation = gc_block.modal.coord_rotation;
     // [18. Set retract mode ]: NOT SUPPORTED
     // [19. Go to predefined position, Set G10, or Set axis offsets ]:
     switch (gc_block.non_modal_command) {
@@ -1808,7 +1886,10 @@ Error gc_execute_line(const char* input_line) {
             // and absolute and incremental modes.
             pl_data->motion.rapidMotion = 1;  // Set rapid motion flag.
             if (axis_command != AxisCommand::None) {
-                mc_linear(gc_block.values.xyz, pl_data, gc_state.position);
+                float rotated_coords[MAX_N_AXIS];
+                copyAxes(rotated_coords, gc_block.values.xyz);
+                apply_coordinate_rotation(rotated_coords);
+                mc_linear(rotated_coords, pl_data, gc_state.position);
             }
             mc_linear(coord_data, pl_data, gc_state.position);
             copyAxes(gc_state.position, coord_data);
@@ -1842,15 +1923,30 @@ Error gc_execute_line(const char* input_line) {
         if (axis_command == AxisCommand::MotionMode) {
             GCUpdatePos gc_update_pos = GCUpdatePos::Target;
             if (gc_state.modal.motion == Motion::Linear) {
-                mc_linear(gc_block.values.xyz, pl_data, gc_state.position);
+                float rotated_coords[MAX_N_AXIS];
+                copyAxes(rotated_coords, gc_block.values.xyz);
+                apply_coordinate_rotation(rotated_coords);
+                mc_linear(rotated_coords, pl_data, gc_state.position);
             } else if (gc_state.modal.motion == Motion::Seek) {
                 pl_data->motion.rapidMotion = 1;  // Set rapid motion flag.
-                mc_linear(gc_block.values.xyz, pl_data, gc_state.position);
+                float rotated_coords[MAX_N_AXIS];
+                copyAxes(rotated_coords, gc_block.values.xyz);
+                apply_coordinate_rotation(rotated_coords);
+                mc_linear(rotated_coords, pl_data, gc_state.position);
             } else if ((gc_state.modal.motion == Motion::CwArc) || (gc_state.modal.motion == Motion::CcwArc)) {
-                mc_arc(gc_block.values.xyz,
+                float rotated_coords[MAX_N_AXIS];
+                float rotated_offsets[3];
+                copyAxes(rotated_coords, gc_block.values.xyz);
+                apply_coordinate_rotation(rotated_coords);
+                // Copy and rotate arc offsets (I,J,K)
+                rotated_offsets[0] = gc_block.values.ijk[0];  // I
+                rotated_offsets[1] = gc_block.values.ijk[1];  // J
+                rotated_offsets[2] = gc_block.values.ijk[2];  // K
+                apply_coordinate_rotation_to_offset(rotated_offsets);
+                mc_arc(rotated_coords,
                        pl_data,
                        gc_state.position,
-                       gc_block.values.ijk,
+                       rotated_offsets,
                        gc_block.values.r,
                        axis_0,
                        axis_1,
@@ -1915,6 +2011,11 @@ Error gc_execute_line(const char* input_line) {
             gc_state.modal.coord_select = CoordIndex::G54;
             gc_state.modal.spindle      = SpindleState::Disable;
             gc_state.modal.coolant      = {};
+            // Reset coordinate rotation on program end for safety
+            gc_state.modal.coord_rotation = CoordinateRotation::Disabled;
+            gc_state.rotation_angle = 0.0f;
+            gc_state.rotation_center[X_AXIS] = 0.0f;
+            gc_state.rotation_center[Y_AXIS] = 0.0f;
             if (config->_enableParkingOverrideControl) {
                 if (config->_start->_deactivateParking) {
                     gc_state.modal.override = Override::Disabled;

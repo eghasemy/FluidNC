@@ -432,9 +432,9 @@ error:20
 g67
 error:20
 g68
-error:20
+ok
 g69
-error:20
+ok
 g70
 error:20
 g71
