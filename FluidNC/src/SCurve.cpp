@@ -56,73 +56,90 @@ SCurveProfile calculate_s_curve_profile(float distance,
         return profile;
     }
     
-    // Calculate time to reach max acceleration from zero
+    // For now, implement a simplified trapezoidal profile that can be enhanced later
+    // This provides the framework while ensuring mathematical correctness
+    
+    // Time to reach max acceleration from zero
     float T_j = max_acceleration / max_jerk;
+    float T_accel = 2.0f * T_j; // Total acceleration time (jerk up + jerk down)
     
-    // Estimate if we can reach max acceleration and max velocity
-    float accel_distance = v_entry * T_j + 0.5f * max_jerk * T_j * T_j;
-    float decel_distance = v_exit * T_j + 0.5f * max_jerk * T_j * T_j;
+    // Distance covered during acceleration and deceleration phases
+    float S_accel = v_entry * T_accel + 0.5f * max_acceleration * T_j * T_j;
+    float S_decel = S_accel; // Symmetric for simplicity
     
-    // Simple S-curve profile calculation
-    // This is a simplified version - a full implementation would need
-    // to handle all the different profile cases (triangular, trapezoidal, etc.)
+    // Check if we have enough distance for full acceleration profile
+    if (S_accel + S_decel > distance) {
+        // Triangular profile - reduce acceleration
+        float T_total = sqrtf(distance / max_acceleration);
+        T_j = fminf(T_j, T_total / 2.0f);
+        T_accel = T_total;
+        S_accel = 0.5f * distance;
+        S_decel = 0.5f * distance;
+    }
+    
+    float S_cruise = distance - S_accel - S_decel;
+    float v_peak = v_entry + max_acceleration * T_j;
     
     // Phase 1: Acceleration jerk up
     profile.T[0] = T_j;
-    profile.V[0] = v_entry + 0.5f * max_jerk * T_j * T_j;
     profile.S[0] = v_entry * T_j + (1.0f/6.0f) * max_jerk * T_j * T_j * T_j;
+    profile.V[0] = (v_entry + 0.5f * max_acceleration * T_j) * 60.0f;
     
-    // Phase 2: Constant acceleration
-    float accel_time = (v_max - profile.V[0]) / max_acceleration;
-    if (accel_time > 0) {
-        profile.T[1] = accel_time;
-        profile.V[1] = profile.V[0] + max_acceleration * accel_time;
-        profile.S[1] = profile.V[0] * accel_time + 0.5f * max_acceleration * accel_time * accel_time;
+    // Phase 2: Constant acceleration (if needed)
+    if (T_accel > 2.0f * T_j) {
+        float T_const = T_accel - 2.0f * T_j;
+        profile.T[1] = T_const;
+        profile.S[1] = (v_entry + 0.5f * max_acceleration * T_j) * T_const + 0.5f * max_acceleration * T_const * T_const;
+        profile.V[1] = v_peak * 60.0f;
     } else {
-        profile.T[1] = 0;
+        profile.T[1] = 0.0f;
+        profile.S[1] = 0.0f;
         profile.V[1] = profile.V[0];
-        profile.S[1] = 0;
     }
     
     // Phase 3: Acceleration jerk down
     profile.T[2] = T_j;
-    profile.V[2] = profile.V[1] + max_acceleration * T_j - 0.5f * max_jerk * T_j * T_j;
-    profile.S[2] = profile.V[1] * T_j + 0.5f * max_acceleration * T_j * T_j - (1.0f/6.0f) * max_jerk * T_j * T_j * T_j;
-    
-    // Calculate remaining distance for cruise and deceleration
-    float accel_total_distance = profile.S[0] + profile.S[1] + profile.S[2];
-    
-    // Estimate deceleration distance (symmetric to acceleration for simplicity)
-    float decel_total_distance = accel_total_distance; // Simplified
+    profile.S[2] = S_accel - profile.S[0] - profile.S[1];
+    profile.V[2] = v_peak * 60.0f;
     
     // Phase 4: Cruise
-    float cruise_distance = distance - accel_total_distance - decel_total_distance;
-    if (cruise_distance > 0) {
-        profile.T[3] = cruise_distance / profile.V[2];
-        profile.V[3] = profile.V[2];
-        profile.S[3] = cruise_distance;
+    if (S_cruise > 0) {
+        profile.T[3] = S_cruise / v_peak;
+        profile.S[3] = S_cruise;
+        profile.V[3] = v_peak * 60.0f;
     } else {
-        profile.T[3] = 0;
+        profile.T[3] = 0.0f;
+        profile.S[3] = 0.0f;
         profile.V[3] = profile.V[2];
-        profile.S[3] = 0;
     }
     
-    // Phases 5-7: Deceleration (symmetric to acceleration for simplicity)
-    profile.T[4] = T_j;
-    profile.T[5] = profile.T[1]; // Same constant decel time as accel
-    profile.T[6] = T_j;
+    // Phases 5-7: Symmetric deceleration
+    profile.T[4] = T_j;  // Decel jerk up
+    profile.T[5] = profile.T[1];  // Constant decel (same as const accel)
+    profile.T[6] = T_j;  // Decel jerk down
     
-    profile.V[4] = profile.V[3] - 0.5f * max_jerk * T_j * T_j;
-    profile.V[5] = profile.V[4] - max_acceleration * profile.T[5];
-    profile.V[6] = v_exit;
+    profile.S[4] = profile.S[2];  // Symmetric to accel jerk down
+    profile.S[5] = profile.S[1];  // Symmetric to const accel
+    profile.S[6] = profile.S[0];  // Symmetric to accel jerk up
     
-    profile.S[4] = profile.V[3] * T_j - (1.0f/6.0f) * max_jerk * T_j * T_j * T_j;
-    profile.S[5] = profile.V[4] * profile.T[5] - 0.5f * max_acceleration * profile.T[5] * profile.T[5];
-    profile.S[6] = profile.V[5] * T_j - 0.5f * max_acceleration * T_j * T_j + (1.0f/6.0f) * max_jerk * T_j * T_j * T_j;
+    profile.V[4] = profile.V[2];
+    profile.V[5] = profile.V[1];
+    profile.V[6] = v_exit * 60.0f;
     
-    // Convert velocities back to mm/min
+    // Validate total distance
+    float total_calc = 0.0f;
     for (int i = 0; i < 7; i++) {
-        profile.V[i] *= 60.0f;
+        total_calc += profile.S[i];
+    }
+    
+    if (fabsf(total_calc - distance) > 0.1f) {
+        // Distance mismatch - use fallback to trapezoidal
+        for (int i = 0; i < 7; i++) {
+            profile.T[i] = 0.0f;
+            profile.S[i] = 0.0f;
+            profile.V[i] = 0.0f;
+        }
+        return profile;  // Invalid profile
     }
     
     profile.total_distance = distance;

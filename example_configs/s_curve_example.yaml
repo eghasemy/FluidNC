@@ -1,0 +1,51 @@
+# FluidNC S-Curve Acceleration Example Configuration
+
+# This example shows how to configure S-curve acceleration in FluidNC
+# S-curve acceleration provides smoother motion by limiting jerk (rate of acceleration change)
+
+name: "FluidNC S-Curve Example"
+board: "FluidNC V3"
+
+axes:
+  x:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 5000.000
+    acceleration_mm_per_sec2: 100.000
+    max_jerk_mm_per_sec3: 1000.000  # Enable S-curve with 1000 mm/sec³ jerk limit
+    max_travel_mm: 300.000
+    soft_limits: false
+
+  y:
+    steps_per_mm: 80.000
+    max_rate_mm_per_min: 5000.000
+    acceleration_mm_per_sec2: 100.000
+    max_jerk_mm_per_sec3: 1000.000  # Enable S-curve with 1000 mm/sec³ jerk limit
+    max_travel_mm: 300.000
+    soft_limits: false
+
+  z:
+    steps_per_mm: 400.000
+    max_rate_mm_per_min: 1000.000
+    acceleration_mm_per_sec2: 50.000
+    max_jerk_mm_per_sec3: 500.000   # Enable S-curve with 500 mm/sec³ jerk limit
+    max_travel_mm: 100.000
+    soft_limits: false
+
+# Notes on S-curve configuration:
+# 
+# max_jerk_mm_per_sec3: Controls the rate of acceleration change
+#   - Set to 0.0 to disable S-curve and use traditional trapezoidal acceleration
+#   - Higher values = more aggressive acceleration changes (less smooth)
+#   - Lower values = smoother acceleration changes (more gradual)
+#   - Typical range: 100-10000 mm/sec³ depending on machine stiffness
+#
+# Guidelines for setting jerk values:
+#   - Light/flexible machines: 100-500 mm/sec³
+#   - Medium stiffness machines: 500-2000 mm/sec³  
+#   - Heavy/rigid machines: 1000-5000 mm/sec³
+#
+# S-curve acceleration provides benefits:
+#   - Reduced mechanical stress and vibration
+#   - Smoother motion and better surface finish
+#   - Reduced wear on mechanical components
+#   - Better tracking of programmed path at high speeds
