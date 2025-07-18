@@ -1182,10 +1182,10 @@ Error gc_execute_line(const char* input_line) {
     // [15.1. Handle coordinate rotation ]: Process G68/G69 parameters
     if (bitnum_is_true(command_words, ModalGroup::MG14)) {  // Check if G68/G69 called in block
         if (gc_block.modal.coord_rotation == CoordinateRotation::Enabled) {
-            // G68: Extract rotation angle from A parameter
-            if (bitnum_is_true(value_words, GCodeWord::A)) {
-                gc_state.rotation_angle = gc_block.values.xyz[A_AXIS];
-                clear_bits(value_words, bitnum_to_mask(GCodeWord::A));
+            // G68: Extract rotation angle from R parameter
+            if (bitnum_is_true(value_words, GCodeWord::R)) {
+                gc_state.rotation_angle = gc_block.values.r;
+                clear_bits(value_words, bitnum_to_mask(GCodeWord::R));
             }
             // Extract optional rotation center from X,Y parameters
             if (bitnum_is_true(value_words, GCodeWord::X)) {
