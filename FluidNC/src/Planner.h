@@ -45,8 +45,14 @@ struct plan_block_t {
     float max_entry_speed_sqr;  // Maximum allowable entry speed based on the minimum of junction limit and
     //   neighboring nominal speeds with overrides in (mm/min)^2
     float acceleration;  // Axis-limit adjusted line acceleration in (mm/min^2). Does not change.
+    float max_jerk;      // Axis-limit adjusted maximum jerk in (mm/min^3). Zero disables S-curve.
     float millimeters;   // The remaining distance for this block to be executed in (mm).
     // NOTE: This value may be altered by stepper algorithm during execution.
+
+    // S-curve acceleration profile data
+    bool use_s_curve;           // True if this block uses S-curve acceleration
+    float s_curve_phases[7];    // Duration of each S-curve phase in seconds
+    float s_curve_distances[7]; // Distance of each S-curve phase in mm
 
     // Stored rate limiting data used by planner when changes occur.
     float max_junction_speed_sqr;  // Junction entry speed limit based on direction vectors in (mm/min)^2

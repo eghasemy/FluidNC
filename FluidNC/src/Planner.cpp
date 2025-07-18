@@ -10,6 +10,7 @@
 
 #include "Planner.h"
 #include "Machine/MachineConfig.h"
+#include "SCurve.h"
 
 #include <cstdlib>  // PSoc Required for labs
 #include <cmath>
@@ -349,6 +350,7 @@ bool plan_buffer_line(float* target, plan_line_data_t* pl_data) {
     // if they are also orthogonal/independent. Operates on the absolute value of the unit vector.
     block->millimeters  = convert_delta_vector_to_unit_vector(unit_vec);
     block->acceleration = limit_acceleration_by_axis_maximum(unit_vec);
+    block->max_jerk     = limit_jerk_by_axis_maximum(unit_vec);
     block->rapid_rate   = limit_rate_by_axis_maximum(unit_vec);
     // Store programmed rate.
     if (block->motion.rapidMotion) {
@@ -415,6 +417,38 @@ bool plan_buffer_line(float* target, plan_line_data_t* pl_data) {
     if (!(block->motion.systemMotion)) {
         float nominal_speed = plan_compute_profile_nominal_speed(block);
         plan_compute_profile_parameters(block, nominal_speed, pl.previous_nominal_speed);
+        
+        // Initialize S-curve profile data
+        block->use_s_curve = false;
+        for (int i = 0; i < 7; i++) {
+            block->s_curve_phases[i] = 0.0f;
+            block->s_curve_distances[i] = 0.0f;
+        }
+        
+        // Calculate S-curve profile if jerk is enabled
+        if (block->max_jerk > 0.0f && should_use_s_curve(block->millimeters, block->max_jerk, block->acceleration)) {
+            // Get entry and exit speeds for this block
+            float entry_speed = sqrtf(block->entry_speed_sqr);
+            float exit_speed = 0.0f; // For now, assume exit speed is 0 (will be refined by planner recalculation)
+            
+            SCurveProfile profile = calculate_s_curve_profile(
+                block->millimeters,
+                entry_speed,
+                exit_speed, 
+                nominal_speed,
+                block->acceleration / 3600.0f,  // Convert mm/min^2 to mm/sec^2
+                block->max_jerk / 216000.0f     // Convert mm/min^3 to mm/sec^3
+            );
+            
+            if (profile.valid) {
+                block->use_s_curve = true;
+                for (int i = 0; i < 7; i++) {
+                    block->s_curve_phases[i] = profile.T[i];
+                    block->s_curve_distances[i] = profile.S[i];
+                }
+            }
+        }
+        
         pl.previous_nominal_speed = nominal_speed;
         // Update previous path unit_vector and planner position.
         copyAxes(pl.previous_unit_vec, unit_vec);

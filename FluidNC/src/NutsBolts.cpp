@@ -175,6 +175,25 @@ float limit_acceleration_by_axis_maximum(float* unit_vec) {
     return limit_value * secPerMinSq;
 }
 
+float limit_jerk_by_axis_maximum(float* unit_vec) {
+    float limit_value = SOME_LARGE_VALUE;
+    auto  n_axis      = Axes::_numberAxis;
+    for (size_t idx = 0; idx < n_axis; idx++) {
+        auto axisSetting = Axes::_axis[idx];
+        if (unit_vec[idx] != 0 && axisSetting->_maxJerk > 0) {  // Avoid divide by zero and check jerk is enabled
+            limit_value = MIN(limit_value, fabsf(axisSetting->_maxJerk / unit_vec[idx]));
+        }
+    }
+    // If no axis has jerk enabled, return 0 to disable S-curve
+    if (limit_value == SOME_LARGE_VALUE) {
+        return 0.0f;
+    }
+    // The jerk setting is stored and displayed in units of mm/sec^3,
+    // but used in units of mm/min^3. Convert appropriately.
+    const float secPerMinCubed = 60.0 * 60.0 * 60.0;
+    return limit_value * secPerMinCubed;
+}
+
 float limit_rate_by_axis_maximum(float* unit_vec) {
     float limit_value = SOME_LARGE_VALUE;
     auto  n_axis      = Axes::_numberAxis;
