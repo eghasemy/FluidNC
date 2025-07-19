@@ -1889,7 +1889,18 @@ Error gc_execute_line(const char* input_line) {
                 float rotated_coords[MAX_N_AXIS];
                 copyAxes(rotated_coords, gc_block.values.xyz);
                 apply_coordinate_rotation(rotated_coords);
-                mc_linear(rotated_coords, pl_data, gc_state.position);
+                
+                // When coordinate rotation is active, we need to pass rotated current position
+                // to motion control to maintain coordinate system consistency
+                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
+                    gc_state.rotation_angle != 0.0f) {
+                    float rotated_position[MAX_N_AXIS];
+                    copyAxes(rotated_position, gc_state.position);
+                    apply_coordinate_rotation(rotated_position);
+                    mc_linear(rotated_coords, pl_data, rotated_position);
+                } else {
+                    mc_linear(rotated_coords, pl_data, gc_state.position);
+                }
             }
             mc_linear(coord_data, pl_data, gc_state.position);
             copyAxes(gc_state.position, coord_data);
@@ -1926,13 +1937,35 @@ Error gc_execute_line(const char* input_line) {
                 float rotated_coords[MAX_N_AXIS];
                 copyAxes(rotated_coords, gc_block.values.xyz);
                 apply_coordinate_rotation(rotated_coords);
-                mc_linear(rotated_coords, pl_data, gc_state.position);
+                
+                // When coordinate rotation is active, we need to pass rotated current position
+                // to motion control to maintain coordinate system consistency
+                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
+                    gc_state.rotation_angle != 0.0f) {
+                    float rotated_position[MAX_N_AXIS];
+                    copyAxes(rotated_position, gc_state.position);
+                    apply_coordinate_rotation(rotated_position);
+                    mc_linear(rotated_coords, pl_data, rotated_position);
+                } else {
+                    mc_linear(rotated_coords, pl_data, gc_state.position);
+                }
             } else if (gc_state.modal.motion == Motion::Seek) {
                 pl_data->motion.rapidMotion = 1;  // Set rapid motion flag.
                 float rotated_coords[MAX_N_AXIS];
                 copyAxes(rotated_coords, gc_block.values.xyz);
                 apply_coordinate_rotation(rotated_coords);
-                mc_linear(rotated_coords, pl_data, gc_state.position);
+                
+                // When coordinate rotation is active, we need to pass rotated current position
+                // to motion control to maintain coordinate system consistency
+                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
+                    gc_state.rotation_angle != 0.0f) {
+                    float rotated_position[MAX_N_AXIS];
+                    copyAxes(rotated_position, gc_state.position);
+                    apply_coordinate_rotation(rotated_position);
+                    mc_linear(rotated_coords, pl_data, rotated_position);
+                } else {
+                    mc_linear(rotated_coords, pl_data, gc_state.position);
+                }
             } else if ((gc_state.modal.motion == Motion::CwArc) || (gc_state.modal.motion == Motion::CcwArc)) {
                 float rotated_coords[MAX_N_AXIS];
                 float rotated_offsets[3];
@@ -1943,16 +1976,36 @@ Error gc_execute_line(const char* input_line) {
                 rotated_offsets[1] = gc_block.values.ijk[1];  // J
                 rotated_offsets[2] = gc_block.values.ijk[2];  // K
                 apply_coordinate_rotation_to_offset(rotated_offsets);
-                mc_arc(rotated_coords,
-                       pl_data,
-                       gc_state.position,
-                       rotated_offsets,
-                       gc_block.values.r,
-                       axis_0,
-                       axis_1,
-                       axis_linear,
-                       clockwiseArc,
-                       int(gc_block.values.p));
+                
+                // When coordinate rotation is active, we need to pass rotated current position
+                // to motion control to maintain coordinate system consistency
+                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
+                    gc_state.rotation_angle != 0.0f) {
+                    float rotated_position[MAX_N_AXIS];
+                    copyAxes(rotated_position, gc_state.position);
+                    apply_coordinate_rotation(rotated_position);
+                    mc_arc(rotated_coords,
+                           pl_data,
+                           rotated_position,
+                           rotated_offsets,
+                           gc_block.values.r,
+                           axis_0,
+                           axis_1,
+                           axis_linear,
+                           clockwiseArc,
+                           int(gc_block.values.p));
+                } else {
+                    mc_arc(rotated_coords,
+                           pl_data,
+                           gc_state.position,
+                           rotated_offsets,
+                           gc_block.values.r,
+                           axis_0,
+                           axis_1,
+                           axis_linear,
+                           clockwiseArc,
+                           int(gc_block.values.p));
+                }
             } else {
                 // NOTE: gc_block.values.xyz is returned from mc_probe_cycle with the updated position value. So
                 // upon a successful probing cycle, the machine position and the returned value should be the same.
@@ -1968,21 +2021,7 @@ Error gc_execute_line(const char* input_line) {
                 return Error::Reset;
             }
             if (gc_update_pos == GCUpdatePos::Target) {
-                // When coordinate rotation is active, update position with rotated coordinates
-                // to maintain consistency between actual machine position and parser position
-                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
-                    gc_state.rotation_angle != 0.0f &&
-                    (gc_state.modal.motion == Motion::Linear || 
-                     gc_state.modal.motion == Motion::Seek ||
-                     gc_state.modal.motion == Motion::CwArc || 
-                     gc_state.modal.motion == Motion::CcwArc)) {
-                    float rotated_position[MAX_N_AXIS];
-                    copyAxes(rotated_position, gc_block.values.xyz);
-                    apply_coordinate_rotation(rotated_position);
-                    copyAxes(gc_state.position, rotated_position);
-                } else {
-                    copyAxes(gc_state.position, gc_block.values.xyz);
-                }
+                copyAxes(gc_state.position, gc_block.values.xyz);
             } else if (gc_update_pos == GCUpdatePos::System) {
                 gc_sync_position();
             }  // == GCUpdatePos::None
