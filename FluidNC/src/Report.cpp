@@ -317,6 +317,16 @@ void report_gcode_modes(Channel& channel) {
             break;
     }
 
+    // Coordinate rotation state (G68/G69)
+    switch (gc_state.modal.coord_rotation) {
+        case CoordinateRotation::Enabled:
+            msg << " G68";
+            break;
+        case CoordinateRotation::Disabled:
+            msg << " G69";
+            break;
+    }
+
     //report_util_gcode_modes_M();
     switch (gc_state.modal.program_flow) {
         case ProgramFlow::Running:

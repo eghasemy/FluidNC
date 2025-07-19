@@ -1968,7 +1968,21 @@ Error gc_execute_line(const char* input_line) {
                 return Error::Reset;
             }
             if (gc_update_pos == GCUpdatePos::Target) {
-                copyAxes(gc_state.position, gc_block.values.xyz);
+                // When coordinate rotation is active, update position with rotated coordinates
+                // to maintain consistency between actual machine position and parser position
+                if (gc_state.modal.coord_rotation == CoordinateRotation::Enabled && 
+                    gc_state.rotation_angle != 0.0f &&
+                    (gc_state.modal.motion == Motion::Linear || 
+                     gc_state.modal.motion == Motion::Seek ||
+                     gc_state.modal.motion == Motion::CwArc || 
+                     gc_state.modal.motion == Motion::CcwArc)) {
+                    float rotated_position[MAX_N_AXIS];
+                    copyAxes(rotated_position, gc_block.values.xyz);
+                    apply_coordinate_rotation(rotated_position);
+                    copyAxes(gc_state.position, rotated_position);
+                } else {
+                    copyAxes(gc_state.position, gc_block.values.xyz);
+                }
             } else if (gc_update_pos == GCUpdatePos::System) {
                 gc_sync_position();
             }  // == GCUpdatePos::None
