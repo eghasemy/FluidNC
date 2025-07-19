@@ -193,7 +193,8 @@ enum class ToolLengthOffset : gcodenum_t {
     EnableDynamic = 431,  // G43.1
 };
 
-static const uint32_t MaxToolNumber = 99999999;
+static const uint32_t MaxToolNumber   = 99999999;
+static const uint32_t ProbeToolNumber = 99;
 
 enum class ToolChange : bool {
     Disable = 0,
@@ -278,14 +279,14 @@ struct gc_modal_t {
     ToolLengthOffset tool_length;   // {G43.1,G49}
     CoordIndex       coord_select;  // {G54,G55,G56,G57,G58,G59}
     // uint8_t control;      // {G61} NOTE: Don't track. Only default supported.
-    ProgramFlow   program_flow;  // {M0,M1,M2,M30}
-    CoolantState  coolant;       // {M7,M8,M9}
-    SpindleState  spindle;       // {M3,M4,M5}
-    ToolChange    tool_change;   // {M6}
-    SetToolNumber        set_tool_number;
-    IoControl            io_control;    // {M62, M63, M67}
-    Override             override;      // {M56}
-    CoordinateRotation   coord_rotation; // {G68,G69}
+    ProgramFlow        program_flow;  // {M0,M1,M2,M30}
+    CoolantState       coolant;       // {M7,M8,M9}
+    SpindleState       spindle;       // {M3,M4,M5}
+    ToolChange         tool_change;   // {M6}
+    SetToolNumber      set_tool_number;
+    IoControl          io_control;      // {M62, M63, M67}
+    Override           override;        // {M56}
+    CoordinateRotation coord_rotation;  // {G68,G69}
 };
 
 struct gc_values_t {
@@ -320,7 +321,7 @@ struct parser_state_t {
     // machine zero in mm. Non-persistent. Cleared upon reset and boot.
     float tool_length_offset;  // Tracks tool length offset value when enabled.
     bool  skip_blocks;         // Skipping due to flow control
-    
+
     // Coordinate rotation state (G68/G69)
     float rotation_angle;      // Rotation angle in degrees
     float rotation_center[2];  // X,Y center of rotation
