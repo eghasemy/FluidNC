@@ -1050,8 +1050,12 @@ static void protocol_do_spindle_override(void* incrementvp) {
         // If spindle is on, tell it the RPM has been overridden
         // When moving, the override is handled by the stepping code
         if (gc_state.modal.spindle != SpindleState::Disable && !inMotionState()) {
-            spindle->setState(gc_state.modal.spindle, gc_state.spindle_speed);
-            gc_ovr_changed();
+            if (gc_state.current_tool != ProbeToolNumber) {
+                spindle->setState(gc_state.modal.spindle, gc_state.spindle_speed);
+                gc_ovr_changed();
+            } else {
+                log_warn("Probe tool active - spindle override ignored");
+            }
         }
     }
 }

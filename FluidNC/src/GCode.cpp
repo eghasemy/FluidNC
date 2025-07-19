@@ -38,11 +38,11 @@ static void apply_coordinate_rotation(float* coords) {
         float angle_rad = gc_state.rotation_angle * M_PI / 180.0f;
         float cos_angle = cosf(angle_rad);
         float sin_angle = sinf(angle_rad);
-        
+
         // Translate to rotation center
         float x = coords[X_AXIS] - gc_state.rotation_center[X_AXIS];
         float y = coords[Y_AXIS] - gc_state.rotation_center[Y_AXIS];
-        
+
         // Apply rotation
         coords[X_AXIS] = x * cos_angle - y * sin_angle + gc_state.rotation_center[X_AXIS];
         coords[Y_AXIS] = x * sin_angle + y * cos_angle + gc_state.rotation_center[Y_AXIS];
@@ -56,11 +56,11 @@ static void apply_coordinate_rotation_to_offset(float* offset) {
         float angle_rad = gc_state.rotation_angle * M_PI / 180.0f;
         float cos_angle = cosf(angle_rad);
         float sin_angle = sinf(angle_rad);
-        
+
         // Rotate the I,J offsets (no translation needed for offsets)
         float i = offset[X_AXIS];  // I offset
         float j = offset[Y_AXIS];  // J offset
-        
+
         offset[X_AXIS] = i * cos_angle - j * sin_angle;  // Rotated I
         offset[Y_AXIS] = i * sin_angle + j * cos_angle;  // Rotated J
     }
@@ -631,11 +631,11 @@ Error gc_execute_line(const char* input_line) {
                         break;
                     case 68:
                         gc_block.modal.coord_rotation = CoordinateRotation::Enabled;
-                        mg_word_bit = ModalGroup::MG14;
+                        mg_word_bit                   = ModalGroup::MG14;
                         break;
                     case 69:
                         gc_block.modal.coord_rotation = CoordinateRotation::Disabled;
-                        mg_word_bit = ModalGroup::MG14;
+                        mg_word_bit                   = ModalGroup::MG14;
                         break;
                     default:
                         return Error::GcodeUnsupportedCommand;  // [Unsupported G command]
@@ -1178,7 +1178,7 @@ Error gc_execute_line(const char* input_line) {
             coords[gc_block.modal.coord_select]->get(block_coord_system);
         }
     }
-    
+
     // [15.1. Handle coordinate rotation ]: Process G68/G69 parameters
     if (bitnum_is_true(command_words, ModalGroup::MG14)) {  // Check if G68/G69 called in block
         if (gc_block.modal.coord_rotation == CoordinateRotation::Enabled) {
@@ -1198,7 +1198,7 @@ Error gc_execute_line(const char* input_line) {
             }
         } else {
             // G69: Reset rotation to disabled state
-            gc_state.rotation_angle = 0.0f;
+            gc_state.rotation_angle          = 0.0f;
             gc_state.rotation_center[X_AXIS] = 0.0f;
             gc_state.rotation_center[Y_AXIS] = 0.0f;
         }
@@ -1682,7 +1682,7 @@ Error gc_execute_line(const char* input_line) {
     // NOTE: Pass zero spindle speed for all restricted laser motions.
     if (!disableLaser) {
         pl_data->spindle_speed = gc_state.spindle_speed;  // Record data for planner use.
-    }                                                     // else { pl_data->spindle_speed = 0.0; } // Initialized as zero already.
+    }  // else { pl_data->spindle_speed = 0.0; } // Initialized as zero already.
     // [5. Select tool ]: NOT SUPPORTED. Only tracks tool value.
     // [M6. Change tool ]:
     if (gc_block.modal.tool_change == ToolChange::Enable) {
@@ -1730,6 +1730,10 @@ Error gc_execute_line(const char* input_line) {
     }
     // [7. Spindle control ]:
     if (gc_state.modal.spindle != gc_block.modal.spindle) {
+        if (gc_block.modal.spindle != SpindleState::Disable && gc_state.current_tool == ProbeToolNumber) {
+            log_warn("Probe tool active - spindle command ignored");
+            gc_block.modal.spindle = SpindleState::Disable;
+        }
         // Update spindle control and apply spindle speed when enabling it in this block.
         // NOTE: All spindle state changes are synced, even in laser mode. Also, pl_data,
         // rather than gc_state, is used to manage laser state for non-laser motions.
@@ -2012,8 +2016,8 @@ Error gc_execute_line(const char* input_line) {
             gc_state.modal.spindle      = SpindleState::Disable;
             gc_state.modal.coolant      = {};
             // Reset coordinate rotation on program end for safety
-            gc_state.modal.coord_rotation = CoordinateRotation::Disabled;
-            gc_state.rotation_angle = 0.0f;
+            gc_state.modal.coord_rotation    = CoordinateRotation::Disabled;
+            gc_state.rotation_angle          = 0.0f;
             gc_state.rotation_center[X_AXIS] = 0.0f;
             gc_state.rotation_center[Y_AXIS] = 0.0f;
             if (config->_enableParkingOverrideControl) {

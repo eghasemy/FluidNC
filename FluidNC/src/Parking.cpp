@@ -183,6 +183,10 @@ void Parking::unpark(bool restart) {
 }
 
 void Parking::restore_spindle() {
+    if (saved_spindle != SpindleState::Disable && gc_state.current_tool == ProbeToolNumber) {
+        log_warn("Probe tool active - spindle restore ignored");
+        return;
+    }
     spindle->setState(saved_spindle, saved_spindle_speed);
 }
 
