@@ -3,9 +3,11 @@
 #include "System.h"    // sys
 #include "Protocol.h"  // protocol_buffer_synchronize
 #include "Machine/MachineConfig.h"
+#include "SettingsDefinitions.h" // config_filename
 #include "string_util.h"  // from_float
 #include "FileStream.h"   // for config persistence
 #include "Configuration/Generator.h" // for config serialization
+#include "Logging.h"     // log_info, log_error
 
 #include <map>
 #include <limits>
@@ -594,10 +596,9 @@ void persist_config_to_yaml() {
             std::string backup_filename = std::string(filename) + ".bak";
             
             // Save to backup first, then rename for atomic operation
-            FileStream backup_file(backup_filename, "w", "");
+            FileStream backup_file(backup_filename.c_str(), "w", "");
             Configuration::Generator generator(backup_file);
             config->group(generator);
-            backup_file.flush();
             // TODO: Implement atomic rename from .bak to original
             log_info("Configuration changes saved to " << filename);
         }
