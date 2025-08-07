@@ -3,6 +3,11 @@
 #include "System.h"    // sys
 #include "Protocol.h"  // protocol_buffer_synchronize
 #include "Machine/MachineConfig.h"
+#include "SettingsDefinitions.h" // config_filename
+#include "string_util.h"  // from_float
+#include "FileStream.h"   // for config persistence
+#include "Configuration/Generator.h" // for config serialization
+#include "Logging.h"     // log_info, log_error
 
 #include <map>
 #include <limits>
@@ -10,6 +15,7 @@
 #include <vector>
 #include <charconv>
 #include <nvs.h>
+#include <filesystem>
 
 std::vector<Setting*> Setting::List __attribute__((init_priority(101))) = {};
 std::vector<Command*> Command::List __attribute__((init_priority(102))) = {};
@@ -542,4 +548,103 @@ const char* IntProxySetting::getStringValue() {
     auto got     = _getter(*MachineConfig::instance());
     _cachedValue = std::to_string(got);
     return _cachedValue.c_str();
+}
+
+// Forward declaration for config persistence function
+void persist_config_to_yaml();
+
+Error FloatAxisSetting::setStringValue(std::string_view value) {
+    Error err = check_state();
+    if (err != Error::Ok) {
+        return err;
+    }
+    
+    // Trim whitespace
+    value = string_util::trim(value);
+    
+    // Parse the float value
+    float newValue;
+    if (!string_util::from_float(value, newValue)) {
+        return Error::BadNumberFormat;
+    }
+    
+    // Validate range
+    if (newValue < _minValue || newValue > _maxValue) {
+        return Error::NumberRange;
+    }
+    
+    // Special validation for steps per mm (series 100) - must be positive
+    // We detect this by checking if the GRBL name starts with "10"
+    const char* grblName = getGrblName();
+    if (grblName && grblName[0] == '1' && grblName[1] == '0') {  // $100 series
+        if (newValue <= 0.0f) {
+            return Error::NumberRange;
+        }
+    }
+    
+    // Store the old value for potential rollback
+    float oldValue = *_valuep;
+    
+    // Update the live config value
+    *_valuep = newValue;
+    
+    // Try to persist the changes
+    try {
+        persist_config_to_yaml();
+    } catch (...) {
+        // If persistence fails, rollback the change
+        *_valuep = oldValue;
+        return Error::NvsSetFailed;  // Reuse existing error for persistence failure
+    }
+    
+    return Error::Ok;
+}
+
+// Atomic configuration persistence - saves current config to file safely
+void persist_config_to_yaml() {
+    // Save config atomically to prevent corruption during write
+    try {
+        auto filename = config_filename->get();
+        if (filename && strlen(filename) > 0) {
+            // Create temporary filename for atomic write
+            std::string temp_filename = std::string(filename) + ".tmp";
+            std::string backup_filename = std::string(filename) + ".bak";
+            
+            // Step 1: Write to temporary file
+            {
+                FileStream temp_file(temp_filename.c_str(), "w", "");
+                Configuration::Generator generator(temp_file);
+                config->group(generator);
+                // File automatically closed and flushed when temp_file goes out of scope
+            }
+            
+            // Step 2: Create backup of original (if it exists)
+            std::error_code ec;
+            if (std::filesystem::exists(filename, ec)) {
+                std::filesystem::copy_file(filename, backup_filename, 
+                    std::filesystem::copy_options::overwrite_existing, ec);
+                if (ec) {
+                    log_error("Failed to create backup: " << ec.message());
+                    return;
+                }
+            }
+            
+            // Step 3: Atomically move temp file to final location
+            std::filesystem::rename(temp_filename, filename, ec);
+            if (ec) {
+                log_error("Failed to atomically update config: " << ec.message());
+                // Try to restore backup if available
+                if (std::filesystem::exists(backup_filename)) {
+                    std::filesystem::rename(backup_filename, filename);
+                    log_info("Restored original config from backup");
+                }
+                return;
+            }
+            
+            log_info("Configuration changes saved to " << filename);
+            log_info("Backup created: " << backup_filename);
+        }
+    } catch (const std::exception& e) {
+        log_error("Failed to persist config: " << e.what());
+    }
 }

@@ -62,6 +62,11 @@ const int BAUD_RATE = 115200;
 // "friendly suggestion" to prevent unwitting dangerous actions, rather than
 // as effective security against malice.
 // #define ENABLE_AUTHENTICATION
+
+// Enable writable GRBL-style axis settings that persist to YAML config
+// When enabled, $100-$130 series settings become writable and changes are saved to config file
+#define ENABLE_WRITABLE_GRBL_AXIS_SETTINGS
+
 // CONFIGURE_EYECATCH_END (DO NOT MODIFY THIS LINE)
 
 #ifdef ENABLE_AUTHENTICATION
