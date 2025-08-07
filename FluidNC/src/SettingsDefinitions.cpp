@@ -57,6 +57,18 @@ void float_proxy(int axis, int grbl_number, const char* name, float* varp) {
     auto proxy = new FloatProxySetting(grbl_name, fluidnc_name, varp);
 }
 
+void float_axis_setting(int axis, int grbl_number, const char* name, float* varp, float minVal = 0.0f, float maxVal = 100000.0f) {
+    // The two strings allocated below are intentionally not freed
+    char* grbl_name = new char[4];
+    snprintf(grbl_name, 4, "%d", grbl_number + axis);
+
+    char* fluidnc_name = new char[strlen(name) + 2];
+    sprintf(fluidnc_name, "%s%c", name, Axes::axisName(axis));
+
+    // Create writable axis setting with validation bounds
+    auto setting = new FloatAxisSetting(grbl_name, fluidnc_name, varp, axis, minVal, maxVal);
+}
+
 #define INT_PROXY(number, name, configvar)                                                                                                 \
     {                                                                                                                                      \
         auto dummy = new IntProxySetting(number, name, [](MachineConfig const& config) { return configvar; });                             \
@@ -103,19 +115,35 @@ void make_proxies() {
     // We do this with multiple loops so the setting numbers are displayed in the expected order
     auto n_axis = Axes::_numberAxis;
     for (int axis = n_axis - 1; axis >= 0; --axis) {
+#ifdef ENABLE_WRITABLE_GRBL_AXIS_SETTINGS
+        float_axis_setting(axis, 130, "Grbl/MaxTravel/", &(config->_axes->_axis[axis]->_maxTravel), 0.0f, 10000.0f);
+#else
         float_proxy(axis, 130, "Grbl/MaxTravel/", &(config->_axes->_axis[axis]->_maxTravel));
+#endif
     }
 
     for (int axis = n_axis - 1; axis >= 0; --axis) {
+#ifdef ENABLE_WRITABLE_GRBL_AXIS_SETTINGS
+        float_axis_setting(axis, 120, "Grbl/Acceleration/", &(config->_axes->_axis[axis]->_acceleration), 1.0f, 50000.0f);
+#else
         float_proxy(axis, 120, "Grbl/Acceleration/", &(config->_axes->_axis[axis]->_acceleration));
+#endif
     }
 
     for (int axis = n_axis - 1; axis >= 0; --axis) {
+#ifdef ENABLE_WRITABLE_GRBL_AXIS_SETTINGS
+        float_axis_setting(axis, 110, "Grbl/MaxRate/", &(config->_axes->_axis[axis]->_maxRate), 1.0f, 100000.0f);
+#else
         float_proxy(axis, 110, "Grbl/MaxRate/", &(config->_axes->_axis[axis]->_maxRate));
+#endif
     }
 
     for (int axis = n_axis - 1; axis >= 0; --axis) {
+#ifdef ENABLE_WRITABLE_GRBL_AXIS_SETTINGS
+        float_axis_setting(axis, 100, "Grbl/Resolution/", &(config->_axes->_axis[axis]->_stepsPerMm), 0.001f, 10000.0f);
+#else
         float_proxy(axis, 100, "Grbl/Resolution/", &(config->_axes->_axis[axis]->_stepsPerMm));
+#endif
     }
 
     INT_PROXY("32", "Grbl/LaserMode", spindle->isRateAdjusted())

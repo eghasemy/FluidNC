@@ -248,6 +248,29 @@ public:
     const char* getDefaultString() override { return ""; }
 };
 
+// FloatAxisSetting - Writable axis setting that updates live config and persists to YAML
+class FloatAxisSetting : public Setting {
+private:
+    float* _valuep;      // Pointer to the actual axis value in config
+    float  _minValue;
+    float  _maxValue;
+    int    _axis;        // Axis index for this setting
+
+public:
+    FloatAxisSetting(const char* grblName, const char* fullName, float* valuep, int axis, float minVal = 0.0f, float maxVal = 100000.0f) :
+        Setting(fullName, type_t::GRBL, permissions_t::WG, grblName, fullName), 
+        _valuep(valuep), _minValue(minVal), _maxValue(maxVal), _axis(axis) {}
+
+    const char* getStringValue() override {
+        static char strval[32];
+        std::snprintf(strval, 31, "%.3f", *_valuep);
+        return strval;
+    }
+    
+    Error       setStringValue(std::string_view value) override;
+    const char* getDefaultString() override { return ""; }
+};
+
 class Coordinates {
 private:
     float       _currentValue[MAX_N_AXIS];

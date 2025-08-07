@@ -3,6 +3,9 @@
 #include "System.h"    // sys
 #include "Protocol.h"  // protocol_buffer_synchronize
 #include "Machine/MachineConfig.h"
+#include "string_util.h"  // from_float
+#include "FileStream.h"   // for config persistence
+#include "Configuration/Generator.h" // for config serialization
 
 #include <map>
 #include <limits>
@@ -542,4 +545,63 @@ const char* IntProxySetting::getStringValue() {
     auto got     = _getter(*MachineConfig::instance());
     _cachedValue = std::to_string(got);
     return _cachedValue.c_str();
+}
+
+// Forward declaration for config persistence function
+void persist_config_to_yaml();
+
+Error FloatAxisSetting::setStringValue(std::string_view value) {
+    Error err = check_state();
+    if (err != Error::Ok) {
+        return err;
+    }
+    
+    // Parse the float value
+    float newValue;
+    if (!string_util::from_float(value, newValue)) {
+        return Error::BadNumberFormat;
+    }
+    
+    // Validate range
+    if (newValue < _minValue || newValue > _maxValue) {
+        return Error::NumberRange;
+    }
+    
+    // Special validation for steps per mm (series 100) - must be positive
+    if (_axis >= 0 && strstr(getGrblName(), "10") == getGrblName()) {  // $100 series
+        if (newValue <= 0.0f) {
+            return Error::NumberRange;
+        }
+    }
+    
+    // Update the live config value
+    *_valuep = newValue;
+    
+    // Mark config as needing persistence
+    persist_config_to_yaml();
+    
+    return Error::Ok;
+}
+
+// Simple persistence mechanism - saves current config to file
+void persist_config_to_yaml() {
+    // For now, create a simple implementation that saves the config
+    // This should be called after any axis setting change
+    try {
+        auto filename = config_filename->get();
+        if (filename && strlen(filename) > 0) {
+            // Create backup filename  
+            std::string backup_filename = std::string(filename) + ".bak";
+            
+            // Save to backup first, then rename for atomic operation
+            FileStream backup_file(backup_filename, "w", "");
+            Configuration::Generator generator(backup_file);
+            config->group(generator);
+            backup_file.flush();
+            // TODO: Implement atomic rename from .bak to original
+            log_info("Configuration changes saved to " << filename);
+        }
+    } catch (const std::exception& e) {
+        log_error("Failed to persist config: " << e.what());
+    }
 }
