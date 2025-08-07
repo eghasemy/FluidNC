@@ -118,6 +118,14 @@ typedef struct {
     float        inv_rate;  // Used by PWM laser mode to speed up segment calculations.
     SpindleSpeed current_spindle_speed;
 
+    // S-curve acceleration support
+    bool  use_s_curve;           // True if current block uses S-curve profile
+    int   s_curve_phase;         // Current S-curve phase (0-6)
+    float s_curve_phase_time;    // Time elapsed in current S-curve phase
+    float s_curve_phases[7];     // Duration of each S-curve phase
+    float s_curve_distances[7];  // Distance of each S-curve phase
+    float current_jerk;          // Current jerk value for S-curve calculations
+
 } st_prep_t;
 static st_prep_t prep;
 
@@ -468,8 +476,21 @@ void Stepper::prep_buffer() {
                     prep.exit_speed  = 0.0;
                 }
             } else {  // [Normal Operation]
+                // Initialize S-curve profile data
+                prep.use_s_curve = pl_block->use_s_curve;
+                prep.s_curve_phase = 0;
+                prep.s_curve_phase_time = 0.0f;
+                prep.current_jerk = 0.0f;
+                if (prep.use_s_curve) {
+                    for (int i = 0; i < 7; i++) {
+                        prep.s_curve_phases[i] = pl_block->s_curve_phases[i];
+                        prep.s_curve_distances[i] = pl_block->s_curve_distances[i];
+                    }
+                    prep.current_jerk = pl_block->max_jerk;
+                }
+                
                 // Compute or recompute velocity profile parameters of the prepped planner block.
-                prep.ramp_type        = RAMP_ACCEL;  // Initialize as acceleration ramp.
+                prep.ramp_type        = prep.use_s_curve ? RAMP_ACCEL_JERK_UP : RAMP_ACCEL;  // Initialize as acceleration ramp.
                 prep.accelerate_until = pl_block->millimeters;
                 float exit_speed_sqr;
                 float nominal_speed;
@@ -612,6 +633,111 @@ void Stepper::prep_buffer() {
                         prep.ramp_type = RAMP_DECEL;
                     } else {  // Cruising only.
                         mm_remaining = mm_var;
+                    }
+                    break;
+                case RAMP_ACCEL_JERK_UP:
+                    // S-curve acceleration jerk-up phase: a(t) = jerk * t
+                    {
+                        float phase_time_remaining = prep.s_curve_phases[prep.s_curve_phase] - prep.s_curve_phase_time;
+                        float time_to_use = fminf(time_var, phase_time_remaining);
+                        
+                        // Calculate acceleration and speed change
+                        float jerk = prep.current_jerk / (60.0f * 60.0f * 60.0f); // Convert to mm/min^3
+                        float accel_start = jerk * prep.s_curve_phase_time;
+                        float accel_end = jerk * (prep.s_curve_phase_time + time_to_use);
+                        speed_var = time_to_use * (accel_start + accel_end) / 2.0f;
+                        
+                        mm_remaining -= time_to_use * (prep.current_speed + speed_var / 2.0f);
+                        prep.current_speed += speed_var;
+                        prep.s_curve_phase_time += time_to_use;
+                        
+                        if (prep.s_curve_phase_time >= prep.s_curve_phases[prep.s_curve_phase]) {
+                            prep.s_curve_phase++;
+                            prep.s_curve_phase_time = 0.0f;
+                            if (prep.s_curve_phase < 7) {
+                                // Move to next S-curve phase
+                                switch (prep.s_curve_phase) {
+                                    case 1: prep.ramp_type = RAMP_ACCEL; break;
+                                    case 2: prep.ramp_type = RAMP_ACCEL_JERK_DOWN; break;
+                                    case 3: prep.ramp_type = RAMP_CRUISE; break;
+                                    case 4: prep.ramp_type = RAMP_DECEL_JERK_UP; break;
+                                    case 5: prep.ramp_type = RAMP_DECEL; break;
+                                    case 6: prep.ramp_type = RAMP_DECEL_JERK_DOWN; break;
+                                }
+                            }
+                        }
+                    }
+                    break;
+                case RAMP_ACCEL_JERK_DOWN:
+                    // S-curve acceleration jerk-down phase: a(t) = max_accel - jerk * t
+                    {
+                        float phase_time_remaining = prep.s_curve_phases[prep.s_curve_phase] - prep.s_curve_phase_time;
+                        float time_to_use = fminf(time_var, phase_time_remaining);
+                        
+                        float jerk = prep.current_jerk / (60.0f * 60.0f * 60.0f);
+                        float max_accel = pl_block->acceleration / (60.0f * 60.0f);
+                        float accel_start = max_accel - jerk * prep.s_curve_phase_time;
+                        float accel_end = max_accel - jerk * (prep.s_curve_phase_time + time_to_use);
+                        speed_var = time_to_use * (accel_start + accel_end) / 2.0f;
+                        
+                        mm_remaining -= time_to_use * (prep.current_speed + speed_var / 2.0f);
+                        prep.current_speed += speed_var;
+                        prep.s_curve_phase_time += time_to_use;
+                        
+                        if (prep.s_curve_phase_time >= prep.s_curve_phases[prep.s_curve_phase]) {
+                            prep.s_curve_phase++;
+                            prep.s_curve_phase_time = 0.0f;
+                            if (prep.s_curve_phase < 7) {
+                                prep.ramp_type = RAMP_CRUISE;
+                            }
+                        }
+                    }
+                    break;
+                case RAMP_DECEL_JERK_UP:
+                    // S-curve deceleration jerk-up phase: a(t) = -jerk * t
+                    {
+                        float phase_time_remaining = prep.s_curve_phases[prep.s_curve_phase] - prep.s_curve_phase_time;
+                        float time_to_use = fminf(time_var, phase_time_remaining);
+                        
+                        float jerk = prep.current_jerk / (60.0f * 60.0f * 60.0f);
+                        float accel_start = -jerk * prep.s_curve_phase_time;
+                        float accel_end = -jerk * (prep.s_curve_phase_time + time_to_use);
+                        speed_var = time_to_use * (accel_start + accel_end) / 2.0f;
+                        
+                        mm_remaining -= time_to_use * (prep.current_speed + speed_var / 2.0f);
+                        prep.current_speed += speed_var;  // speed_var is negative for deceleration
+                        prep.s_curve_phase_time += time_to_use;
+                        
+                        if (prep.s_curve_phase_time >= prep.s_curve_phases[prep.s_curve_phase]) {
+                            prep.s_curve_phase++;
+                            prep.s_curve_phase_time = 0.0f;
+                            if (prep.s_curve_phase < 7) {
+                                prep.ramp_type = RAMP_DECEL;
+                            }
+                        }
+                    }
+                    break;
+                case RAMP_DECEL_JERK_DOWN:
+                    // S-curve deceleration jerk-down phase: a(t) = -max_accel + jerk * t
+                    {
+                        float phase_time_remaining = prep.s_curve_phases[prep.s_curve_phase] - prep.s_curve_phase_time;
+                        float time_to_use = fminf(time_var, phase_time_remaining);
+                        
+                        float jerk = prep.current_jerk / (60.0f * 60.0f * 60.0f);
+                        float max_accel = pl_block->acceleration / (60.0f * 60.0f);
+                        float accel_start = -max_accel + jerk * prep.s_curve_phase_time;
+                        float accel_end = -max_accel + jerk * (prep.s_curve_phase_time + time_to_use);
+                        speed_var = time_to_use * (accel_start + accel_end) / 2.0f;
+                        
+                        mm_remaining -= time_to_use * (prep.current_speed + speed_var / 2.0f);
+                        prep.current_speed += speed_var;
+                        prep.s_curve_phase_time += time_to_use;
+                        
+                        if (prep.s_curve_phase_time >= prep.s_curve_phases[prep.s_curve_phase]) {
+                            // End of S-curve profile
+                            prep.s_curve_phase++;
+                            prep.s_curve_phase_time = 0.0f;
+                        }
                     }
                     break;
                 default:  // case RAMP_DECEL:

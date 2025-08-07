@@ -33,6 +33,7 @@ namespace Machine {
         float _stepsPerMm   = 80.0f;
         float _maxRate      = 1000.0f;
         float _acceleration = 25.0f;
+        float _maxJerk      = 0.0f;  // 0.0 = S-curve disabled, >0 = S-curve enabled
         float _maxTravel    = 1000.0f;
         bool  _softLimits   = false;
 

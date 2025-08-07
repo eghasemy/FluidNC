@@ -1,6 +1,7 @@
 #include "Axes.h"
 #include "Axis.h"
 #include "MachineConfig.h"  // config
+#include "../SCurve.h"      // For S-curve validation
 
 #include <cstring>
 
@@ -9,6 +10,7 @@ namespace Machine {
         handler.item("steps_per_mm", _stepsPerMm, 0.001, 100000.0);
         handler.item("max_rate_mm_per_min", _maxRate, 0.001, 250000.0);
         handler.item("acceleration_mm_per_sec2", _acceleration, 0.001, 100000.0);
+        handler.item("max_jerk_mm_per_sec3", _maxJerk, 0.0, 1000000.0);
         handler.item("max_travel_mm", _maxTravel, 0.1, 10000000.0);
         handler.item("soft_limits", _softLimits);
         handler.section("homing", _homing);
@@ -27,6 +29,18 @@ namespace Machine {
     void Axis::afterParse() {
         if (_motors[0] == nullptr) {
             _motors[0] = new Machine::Motor(_axis, 0);
+        }
+        
+        // Validate S-curve configuration if enabled
+        if (_maxJerk > 0.0f) {
+            const char* error_msg;
+            if (!validate_s_curve_config(_maxJerk, _acceleration, _maxRate, &error_msg)) {
+                log_config_error("Axis " << _axis << " S-curve configuration error: " << error_msg);
+                log_config_error("S-curve acceleration disabled for axis " << _axis);
+                _maxJerk = 0.0f; // Disable S-curve
+            } else {
+                log_info("Axis " << _axis << " S-curve acceleration enabled (jerk: " << _maxJerk << " mm/sec³)");
+            }
         }
     }
 

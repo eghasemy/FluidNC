@@ -10,6 +10,7 @@
 
 #include "Planner.h"
 #include "Machine/MachineConfig.h"
+#include "SCurve.h"
 
 #include <cstdlib>  // PSoc Required for labs
 #include <cmath>
@@ -349,6 +350,7 @@ bool plan_buffer_line(float* target, plan_line_data_t* pl_data) {
     // if they are also orthogonal/independent. Operates on the absolute value of the unit vector.
     block->millimeters  = convert_delta_vector_to_unit_vector(unit_vec);
     block->acceleration = limit_acceleration_by_axis_maximum(unit_vec);
+    block->max_jerk     = limit_jerk_by_axis_maximum(unit_vec);
     block->rapid_rate   = limit_rate_by_axis_maximum(unit_vec);
     // Store programmed rate.
     if (block->motion.rapidMotion) {
@@ -404,10 +406,39 @@ bool plan_buffer_line(float* target, plan_line_data_t* pl_data) {
             } else {
                 convert_delta_vector_to_unit_vector(junction_unit_vec);
                 float junction_acceleration = limit_acceleration_by_axis_maximum(junction_unit_vec);
-                float sin_theta_d2          = sqrtf(0.5f * (1.0f - junction_cos_theta));  // Trig half angle identity. Always positive.
+                float junction_jerk = limit_jerk_by_axis_maximum(junction_unit_vec);
+                float sin_theta_d2 = sqrtf(0.5f * (1.0f - junction_cos_theta));  // Trig half angle identity. Always positive.
+                
+                // Calculate base junction speed
+                float base_junction_speed_sqr = (junction_acceleration * config->_junctionDeviation * sin_theta_d2) / (1.0f - sin_theta_d2);
+                
+                // If S-curve is enabled, adjust junction speed considering jerk limits
+                if (junction_jerk > 0.0f) {
+                    // Calculate S-curve aware junction velocity
+                    float prev_distance = 0.0f;
+                    float curr_distance = block->millimeters;
+                    
+                    // Get previous block distance if available
+                    if (block_buffer_head != block_buffer_tail) {
+                        uint8_t prev_index = plan_prev_block_index(block_buffer_head);
+                        plan_block_t* prev_block = &block_buffer[prev_index];
+                        prev_distance = prev_block->millimeters;
+                    }
+                    
+                    // Calculate angle factor based on junction angle
+                    float angle_factor = (1.0f - junction_cos_theta) / 2.0f; // 0 for straight, 1 for 180 degree turn
+                    angle_factor = fmaxf(0.1f, angle_factor); // Minimum factor to prevent zero
+                    
+                    float s_curve_junction_speed = calculate_s_curve_junction_velocity(
+                        prev_distance, curr_distance, junction_acceleration, junction_jerk, angle_factor);
+                    
+                    // Use the more restrictive of the two calculations
+                    float s_curve_junction_speed_sqr = s_curve_junction_speed * s_curve_junction_speed;
+                    base_junction_speed_sqr = fminf(base_junction_speed_sqr, s_curve_junction_speed_sqr);
+                }
+                
                 block->max_junction_speed_sqr =
-                    MAX(MINIMUM_JUNCTION_SPEED * MINIMUM_JUNCTION_SPEED,
-                        (junction_acceleration * config->_junctionDeviation * sin_theta_d2) / (1.0f - sin_theta_d2));
+                    MAX(MINIMUM_JUNCTION_SPEED * MINIMUM_JUNCTION_SPEED, base_junction_speed_sqr);
             }
         }
     }
@@ -415,6 +446,54 @@ bool plan_buffer_line(float* target, plan_line_data_t* pl_data) {
     if (!(block->motion.systemMotion)) {
         float nominal_speed = plan_compute_profile_nominal_speed(block);
         plan_compute_profile_parameters(block, nominal_speed, pl.previous_nominal_speed);
+        
+        // Initialize S-curve profile data
+        block->use_s_curve = false;
+        for (int i = 0; i < 7; i++) {
+            block->s_curve_phases[i] = 0.0f;
+            block->s_curve_distances[i] = 0.0f;
+        }
+        
+        // Calculate S-curve profile if jerk is enabled
+        if (block->max_jerk > 0.0f && should_use_s_curve(block->millimeters, block->max_jerk, block->acceleration)) {
+            // Get entry and exit speeds for this block
+            float entry_speed = sqrtf(block->entry_speed_sqr);
+            float exit_speed = 0.0f; // For now, assume exit speed is 0 (will be refined by planner recalculation)
+            
+            // Use fast calculation for small moves or when speeds are similar
+            bool use_fast_calc = (block->millimeters < 50.0f) || 
+                               (fabsf(entry_speed - exit_speed) < 100.0f);
+            
+            SCurveProfile profile;
+            if (use_fast_calc) {
+                profile = calculate_s_curve_fast(
+                    block->millimeters,
+                    entry_speed,
+                    exit_speed, 
+                    nominal_speed,
+                    block->acceleration / 3600.0f,  // Convert mm/min^2 to mm/sec^2
+                    block->max_jerk / 216000.0f     // Convert mm/min^3 to mm/sec^3
+                );
+            } else {
+                profile = calculate_s_curve_profile(
+                    block->millimeters,
+                    entry_speed,
+                    exit_speed, 
+                    nominal_speed,
+                    block->acceleration / 3600.0f,  // Convert mm/min^2 to mm/sec^2
+                    block->max_jerk / 216000.0f     // Convert mm/min^3 to mm/sec^3
+                );
+            }
+            
+            if (profile.valid) {
+                block->use_s_curve = true;
+                for (int i = 0; i < 7; i++) {
+                    block->s_curve_phases[i] = profile.T[i];
+                    block->s_curve_distances[i] = profile.S[i];
+                }
+            }
+        }
+        
         pl.previous_nominal_speed = nominal_speed;
         // Update previous path unit_vector and planner position.
         copyAxes(pl.previous_unit_vec, unit_vec);

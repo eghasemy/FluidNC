@@ -10,6 +10,11 @@ const int   RAMP_ACCEL              = 0;
 const int   RAMP_CRUISE             = 1;
 const int   RAMP_DECEL              = 2;
 const int   RAMP_DECEL_OVERRIDE     = 3;
+// S-curve acceleration ramp states
+const int   RAMP_ACCEL_JERK_UP      = 4;  // Jerk-limited acceleration start
+const int   RAMP_ACCEL_JERK_DOWN    = 5;  // Jerk-limited acceleration end
+const int   RAMP_DECEL_JERK_UP      = 6;  // Jerk-limited deceleration start
+const int   RAMP_DECEL_JERK_DOWN    = 7;  // Jerk-limited deceleration end
 
 struct PrepFlag {
     uint8_t recalculate : 1;
